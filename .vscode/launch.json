@@ -1,0 +1,22 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch Program",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/main.go",  // 替换为你要运行的 Go 文件的路径
+            "args": [
+                "D:/workspace/vscodeworkspace/go/moduletest/module/zjf_workflow/xml/leave.xml"  // 传递给main函数的参数
+            ],
+            "showLog": true,
+            "trace": "log",
+            "env": {},
+            "cwd": "${workspaceFolder}",
+            "stopOnEntry": false,
+            "console": "integratedTerminal",
+            "internalConsoleOptions": "openOnSessionStart"
+        }
+    ]
+}

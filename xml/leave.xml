@@ -1,0 +1,111 @@
+
+<?xml version="1.0" encoding="UTF-8"?>
+    <Process executionId="leave_request" name="Leave Request Process">
+
+        <!-- 开始事件 -->
+        <StartEvent executionId="startEvent" name="Start">
+            <Outgoing>flow2</Outgoing>
+                 <FormData>
+                <![CDATA[
+                {
+                    "formFields": [
+                        {"id": "employeeName", "label": "Employee Name", "type": "text"},
+                        {"id": "leaveType", "label": "Leave Type", "type": "dropdown", "options": ["Annual Leave", "Sick Leave", "Maternity Leave"]},
+                        {"id": "startDate", "label": "Start Date", "type": "date"},
+                        {"id": "endDate", "label": "End Date", "type": "date"},
+                        {"id": "reason", "label": "Reason", "type": "textarea"}
+                    ]
+                }
+                ]]>
+            </FormData>
+        </StartEvent> 
+
+        <!-- 并行网关 (分支) -->
+        <ParallelGateway executionId="parallelGateway1">
+            <Incoming>flow2</Incoming>
+            <Outgoing>flow3</Outgoing>
+            <Outgoing>flow4</Outgoing>
+        </ParallelGateway>
+
+        <!-- 审批节点 1 (经理审批) -->
+        <Task executionId="approveTask1" name="Manager Approval" assigneeType="ByAssigneeName" assigneeKey="SC">
+            <Incoming>flow3</Incoming>
+            <Outgoing>flow5</Outgoing>
+            <FormData>
+                <![CDATA[
+                {
+                    "formFields": [
+                        {"id": "approvalStatus", "label": "Approval Status", "type": "radio", "options": ["Approve", "Reject"]},
+                        {"id": "comments", "label": "Manager Comments", "type": "textarea"}
+                    ],
+                    "instructions": "Please review the leave request and provide your approval."
+                }
+                ]]>
+            </FormData>
+        </Task>
+
+        <!-- 审批节点 2 (上级公司负责人审批) -->
+        <Task executionId="approveTask2" name="HR Approval" assigneeType="ByParentCompany" assigneeKey="somedata">
+            <Incoming>flow4</Incoming>
+            <Outgoing>flow6</Outgoing>
+            <FormData>
+                <![CDATA[
+                {
+                    "formFields": [
+                        {"id": "approvalStatus", "label": "Approval Status", "type": "radio", "options": ["Approve", "Reject"]},
+                        {"id": "comments", "label": "parentCompany Comments", "type": "textarea"}
+                    ],
+                    "instructions": "Please ensure all details are correct before final approval."
+                }
+                ]]>
+            </FormData>
+        </Task>
+
+        <!-- 并行网关 (汇聚) -->
+        <ParallelGateway executionId="parallelGateway2">
+            <Incoming>flow5</Incoming>
+            <Incoming>flow6</Incoming>
+            <Outgoing>flow7</Outgoing>
+        </ParallelGateway>
+
+        <!-- 互斥网关 (判断审批结果) -->
+        <ExclusiveGateway executionId="exclusiveGateway1">
+            <Incoming>flow7</Incoming>
+            <Outgoing>flow8</Outgoing>
+            <Outgoing>flow9</Outgoing>
+        </ExclusiveGateway>
+
+        <!-- 表达式判断 (是否批准) -->
+        <SequenceFlow executionId="flow8" sourceRef="exclusiveGateway1" targetRef="approvedEndEvent">
+            <ConditionExpression xsi:type="tFormalExpression"><![CDATA[
+            approveTask1.approvalStatus == 'Approve' && approveTask2.approvalStatus == 'Approve'
+            ]]></ConditionExpression>
+        </SequenceFlow>
+
+        <!-- 表达式判断 (是否拒绝) -->
+        <SequenceFlow executionId="flow9" sourceRef="exclusiveGateway1" targetRef="rejectedEndEvent">
+            <ConditionExpression xsi:type="tFormalExpression"><![CDATA[
+            approveTask1.approvalStatus == 'Reject' || approveTask2.approvalStatus == 'Reject'
+            ]]></ConditionExpression>
+        </SequenceFlow>
+
+        <!-- 请假批准 -->
+        <EndEvent executionId="approvedEndEvent" name="Approved">
+            <Incoming>flow8</Incoming>
+        </EndEvent>
+
+        <!-- 请假拒绝 -->
+        <EndEvent executionId="rejectedEndEvent" name="Rejected">
+            <Incoming>flow9</Incoming>
+        </EndEvent>
+
+        <!-- 序列流 -->
+        <SequenceFlow executionId="flow2" sourceRef="startEvent" targetRef="parallelGateway1"/>
+        <SequenceFlow executionId="flow3" sourceRef="parallelGateway1" targetRef="approveTask1"/>
+        <SequenceFlow executionId="flow4" sourceRef="parallelGateway1" targetRef="approveTask2"/>
+        <SequenceFlow executionId="flow5" sourceRef="approveTask1" targetRef="parallelGateway2"/>
+        <SequenceFlow executionId="flow6" sourceRef="approveTask2" targetRef="parallelGateway2"/>
+        <SequenceFlow executionId="flow7" sourceRef="parallelGateway2" targetRef="exclusiveGateway1"/>
+
+    </Process>
+</Definitions>
