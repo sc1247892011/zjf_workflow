@@ -1,6 +1,7 @@
 package components
 
 import (
+	"database/sql"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -20,10 +21,11 @@ type ProcessDefinition struct {
 
 // RepositoryService 提供了操作流程定义表的接口
 type RepositoryService interface {
-	SaveProcessDefinition(pd *ProcessDefinition) (int, error)
+	SaveProcessDefinition(tx *sql.Tx, pd *ProcessDefinition) (int, error)
 	GetProcessDefinitionById(id int) (*ProcessDefinition, error)
 	GetProcessDefinitionByNameAndVersion(name string, version int) (*ProcessDefinition, error)
 	GetLatestProcessDefinitionByName(name string) (*ProcessDefinition, error)
-	UpdateProcessDefinition(pd *ProcessDefinition) error
-	DeleteProcessDefinition(id int) error
+	UpdateProcessDefinition(tx *sql.Tx, pd *ProcessDefinition) error
+	DeleteProcessDefinition(tx *sql.Tx, id int) error
+	GetTransaction() (*sql.Tx, error)
 }

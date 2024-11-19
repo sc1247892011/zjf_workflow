@@ -36,7 +36,7 @@ var (
 func InitializeServiceFactory(dbtype string, db *sql.DB) {
 	serviceFactoryOnce.Do(func() {
 		switch dbtype {
-		case "mysql":
+		case MYSQL_DBNAME:
 			serviceFactoryInstance = &MySQLServiceFactory{}
 		// 未来如果添加其他数据库类型
 		// case "oracle":

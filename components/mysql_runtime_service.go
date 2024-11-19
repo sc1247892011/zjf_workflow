@@ -31,8 +31,12 @@ func GetMySQLRuntimeService() *MySQLRuntimeService {
 	return mysqlRuntimeServiceInstance
 }
 
+func (service *MySQLRuntimeService) GetTransaction() (*sql.Tx, error) {
+	return service.DB.Begin()
+}
+
 // StartProcessInstance 创建一个新的流程实例
-func (r *MySQLRuntimeService) StartProcessInstance(processDefinitionName string, business_key string, createdBy string, formParams string) (int, error) {
+func (service *MySQLRuntimeService) StartProcessInstance(tx *sql.Tx, processDefinitionName string, business_key string, createdBy string, formParams string) (int, error) {
 	mySQLRepositoryService := GetMySQLRepositoryService()
 	//判断是否有现成的 流程定义缓存
 	modelMap := GetModelMap()
@@ -46,6 +50,9 @@ func (r *MySQLRuntimeService) StartProcessInstance(processDefinitionName string,
 			return 0, fmt.Errorf("failed to retrieve last insert id: %v", err)
 		}
 
+		if ppd == nil {
+			return 0, fmt.Errorf("no process definition found with name: %s", processDefinitionName)
+		}
 		pd := *ppd
 		//解析xml
 		model, parseErr = ParseXMLByte(pd.XMLContent)
@@ -64,7 +71,7 @@ func (r *MySQLRuntimeService) StartProcessInstance(processDefinitionName string,
         VALUES (?, ?,'running',?, ?, ?)
     `
 	startTime := time.Now()
-	result, err2 := r.DB.Exec(query, model.ProcessDefinitionName, model.Version, createdBy, business_key, startTime)
+	result, err2 := tx.Exec(query, model.ProcessDefinitionName, model.Version, createdBy, business_key, startTime)
 	if err2 != nil {
 		return 0, fmt.Errorf("failed to start process instance: %v", err2)
 	}
@@ -85,13 +92,27 @@ func (r *MySQLRuntimeService) StartProcessInstance(processDefinitionName string,
 		Model:                 model,
 		ProcessInstanceId:     int(id),
 		ProcessDefinitionName: processDefinitionName,
-		Version:               model.Version,
-		BusinessKey:           business_key,
-		CurrentUserId:         createdBy,
-		Data:                  formParams,
-		StartTime:             time.Now(),
+		// Version:               model.Version,
+		// BusinessKey:           business_key,
+		CurrentUserId: createdBy,
+		Data:          formParams,
+		StartTime:     time.Now(),
+		Tx:            tx,
 	}
 
 	startEventElement.Execute(ctx)
 	return int(id), nil
+}
+
+func (service *MySQLRuntimeService) CompleteProcessInstance(tx *sql.Tx, ProcessInstanceId int) error {
+	query := `
+        UPDATE process_instance
+        SET status = 'complete', end_time = NOW()
+        WHERE id = ?
+    `
+	_, err := tx.Exec(query, ProcessInstanceId)
+	if err != nil {
+		return fmt.Errorf("failed to complete process instance, id: %d %v", ProcessInstanceId, err)
+	}
+	return nil
 }

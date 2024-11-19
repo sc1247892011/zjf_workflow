@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Process name="请假">
+	<StartEvent executionId="1" name="发起" x="140.99375915527344" y="231.9875030517578" w="50" h="50.00000762939453">
+		<FormData><![CDATA[ {
+                    "elements": [
+                        {"id": "employeeName", "label": "Employee Name", "type": "text"},
+                        {"id": "leaveType", "label": "Leave Type", "type": "dropdown", "options": ["Annual Leave", "Sick Leave", "Maternity Leave"]},
+                        {"id": "startDate", "label": "Start Date", "type": "date"},
+                        {"id": "endDate", "label": "End Date", "type": "date"},
+                        {"id": "reason", "label": "Reason", "type": "textarea"}
+                    ],
+                    "title": "请假申请"
+                }]]></FormData>
+		<Outgoing>8</Outgoing>
+	</StartEvent>
+	<ParallelGateway executionId="2" x="265.9937438964844" y="231.9875030517578" w="50.00000762939453" h="50.00000762939453">
+		<Incoming>8</Incoming>
+		<Outgoing>9</Outgoing>
+		<Outgoing>10</Outgoing>
+	</ParallelGateway>
+	<Task executionId="3" name="1" assigneeType="ByAssigneeName" assigneeKey="SC" x="415.9937438964844" y="131.9875030517578" w="120.00000762939453" h="100">
+		<FormData><![CDATA[{
+                    "elements": [
+                        {"id": "approvalStatus", "label": "Approval Status", "type": "radio", "options": ["Approve", "Reject"]},
+                        {"id": "comments", "label": "Manager Comments", "type": "textarea"}
+                    ],
+                    "title": "领导审批"
+                }]]></FormData>
+		<Incoming>9</Incoming>
+		<Outgoing>11</Outgoing>
+	</Task>
+	<Task executionId="4" name="2" assigneeType="ByParentCompany" assigneeKey="SC" x="440.9937438964844" y="306.98748779296875" w="120.00000762939453" h="100.00001525878906">
+		<FormData><![CDATA[{
+                    "elements": [
+                        {"id": "approvalStatus", "label": "Approval Status", "type": "radio", "options": ["Approve", "Reject"]},
+                        {"id": "comments", "label": "parentCompany Comments", "type": "textarea"}
+                    ],
+                    "title": "上级部门负责人审批"
+                }]]></FormData>
+		<Incoming>10</Incoming>
+		<Outgoing>12</Outgoing>
+	</Task>
+	<ParallelGateway executionId="5" x="615.9937744140625" y="256.9875183105469" w="49.99995422363281" h="49.99997329711914">
+		<Incoming>11</Incoming>
+		<Incoming>12</Incoming>
+		<Outgoing>13</Outgoing>
+	</ParallelGateway>
+	<ExclusiveGateway executionId="6" x="765.9937744140625" y="256.9875183105469" w="49.99995422363281" h="49.99997329711914">
+		<Incoming>13</Incoming>
+		<Outgoing>14</Outgoing>
+		<Outgoing>16</Outgoing>
+	</ExclusiveGateway>
+	<EndEvent executionId="7" name="成功" x="915.9938354492188" y="256.9875183105469" w="49.99995422363281" h="49.99997329711914">
+		<Incoming>14</Incoming>
+	</EndEvent>
+	<EndEvent executionId="15" name="失败" x="765.9937744140625" y="456.9875183105469" w="49.99995422363281" h="49.9999885559082">
+		<Incoming>16</Incoming>
+	</EndEvent>
+	<SequenceFlow executionId="8" sourceRef="1" targetRef="2" x="206.98751831054688" y="278.9750061035156" w="35.00000762939453" h="0"/>
+	<SequenceFlow executionId="9" sourceRef="2" targetRef="3" x="306.98748779296875" y="203.9750213623047" w="109.99999237060547" h="75"/>
+	<SequenceFlow executionId="10" sourceRef="2" targetRef="4" x="306.98748779296875" y="278.9750061035156" w="135" h="99.99996185302734"/>
+	<SequenceFlow executionId="11" sourceRef="3" targetRef="5" x="551.987548828125" y="203.9750213623047" w="64.99999237060547" h="100.00001525878906"/>
+	<SequenceFlow executionId="12" sourceRef="4" targetRef="5" x="576.987548828125" y="303.97503662109375" w="39.999977111816406" h="74.99994659423828"/>
+	<SequenceFlow executionId="13" sourceRef="5" targetRef="6" x="681.9874877929688" y="303.97503662109375" w="85.00005340576172" h="0"/>
+	<SequenceFlow executionId="14" sourceRef="6" targetRef="7" x="831.9874877929688" y="178.9750213623047" w="110.00003051757812" h="125.00000762939453">
+		<ConditionExpression><![CDATA[approveTask1.approvalStatus == 'Approve' && approveTask2.approvalStatus == 'Approve']]></ConditionExpression>
+	</SequenceFlow>
+	<SequenceFlow executionId="16" sourceRef="6" targetRef="15" x="831.9874877929688" y="303.97503662109375" w="110.00003051757812" h="200.00001525878906">
+		<ConditionExpression><![CDATA[approveTask1.approvalStatus == 'Reject' || approveTask2.approvalStatus == 'Reject']]></ConditionExpression>
+	</SequenceFlow>
+</Process>

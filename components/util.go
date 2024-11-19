@@ -1,10 +1,12 @@
 package components
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"regexp"
+	"strings"
 
 	"github.com/Knetic/govaluate"
 )
@@ -19,15 +21,30 @@ func ReadXMLFile(filePath string) ([]byte, error) {
 	return xmlContent, nil
 }
 
-// 解析json为map字符串
+// 解析json字符串为json对象，在go里json对象是map[string]interface{}的形式
 func ParseJSON(input string) (map[string]interface{}, error) {
 	var result map[string]interface{}
 	err := json.Unmarshal([]byte(input), &result)
 	return result, err
 }
 
+// 将 map 转换为 JSON 字符串
+func ToJsonString(data map[string]interface{}) (string, error) {
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		fmt.Println("Error converting map to JSON:", err)
+		return "", err
+	}
+	return string(jsonData), nil
+}
+
 // govaluate表达式计算
 func EvaluateExpression(expression string, parameters map[string]interface{}) (interface{}, error) {
+	for key, value := range parameters {
+		// 将参数中的值替换到表达式中
+		strValue := fmt.Sprintf("'%v'", value)
+		expression = strings.ReplaceAll(expression, key, strValue)
+	}
 	// 创建表达式解析器
 	expr, err := govaluate.NewEvaluableExpression(expression)
 	if err != nil {
@@ -35,7 +52,7 @@ func EvaluateExpression(expression string, parameters map[string]interface{}) (i
 	}
 
 	// 评估表达式
-	result, err := expr.Evaluate(parameters)
+	result, err := expr.Evaluate(nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to evaluate expression: %v", err)
 	}
@@ -60,4 +77,20 @@ func ExtractAttributes(expression string) []string {
 	}
 
 	return attributes
+}
+
+// 辅助函数用于处理 sql.NullString
+func nilIfEmpty(ns sql.NullString) interface{} {
+	if ns.Valid {
+		return ns.String
+	}
+	return nil
+}
+
+// 辅助函数用于处理 sql.NullTime
+func nilIfEmptyTime(nt sql.NullTime) interface{} {
+	if nt.Valid {
+		return nt.Time
+	}
+	return nil
 }

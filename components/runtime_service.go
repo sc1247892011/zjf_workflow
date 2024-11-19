@@ -1,6 +1,7 @@
 package components
 
 import (
+	"database/sql"
 	"time"
 )
 
@@ -18,5 +19,7 @@ type ProcessInstance struct {
 
 // RuntimeService 提供了操作流程实例的接口
 type RuntimeService interface {
-	StartProcessInstance(ProcessDefinitionName string, Business_key string, createdBy string, formParams string) (int, error)
+	StartProcessInstance(tx *sql.Tx, ProcessDefinitionName string, Business_key string, createdBy string, formParams string) (int, error)
+	CompleteProcessInstance(tx *sql.Tx, ProcessInstanceId int) error
+	GetTransaction() (*sql.Tx, error)
 }

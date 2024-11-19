@@ -1,6 +1,5 @@
-
 <?xml version="1.0" encoding="UTF-8"?>
-    <Process executionId="leave_request" name="Leave Request Process">
+    <Process name="Leave Request Process">
 
         <!-- 开始事件 -->
         <StartEvent executionId="startEvent" name="Start">
@@ -8,13 +7,14 @@
                  <FormData>
                 <![CDATA[
                 {
-                    "formFields": [
+                    "elements": [
                         {"id": "employeeName", "label": "Employee Name", "type": "text"},
                         {"id": "leaveType", "label": "Leave Type", "type": "dropdown", "options": ["Annual Leave", "Sick Leave", "Maternity Leave"]},
                         {"id": "startDate", "label": "Start Date", "type": "date"},
                         {"id": "endDate", "label": "End Date", "type": "date"},
                         {"id": "reason", "label": "Reason", "type": "textarea"}
-                    ]
+                    ],
+                    "title": "请假申请"
                 }
                 ]]>
             </FormData>
@@ -34,11 +34,11 @@
             <FormData>
                 <![CDATA[
                 {
-                    "formFields": [
+                    "elements": [
                         {"id": "approvalStatus", "label": "Approval Status", "type": "radio", "options": ["Approve", "Reject"]},
                         {"id": "comments", "label": "Manager Comments", "type": "textarea"}
                     ],
-                    "instructions": "Please review the leave request and provide your approval."
+                    "title": "领导审批"
                 }
                 ]]>
             </FormData>
@@ -51,11 +51,11 @@
             <FormData>
                 <![CDATA[
                 {
-                    "formFields": [
+                    "elements": [
                         {"id": "approvalStatus", "label": "Approval Status", "type": "radio", "options": ["Approve", "Reject"]},
                         {"id": "comments", "label": "parentCompany Comments", "type": "textarea"}
                     ],
-                    "instructions": "Please ensure all details are correct before final approval."
+                    "title": "上级部门负责人审批"
                 }
                 ]]>
             </FormData>

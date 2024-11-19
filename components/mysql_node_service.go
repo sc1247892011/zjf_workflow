@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -32,14 +33,18 @@ func GetMySQLNodeService() *MySQLNodeService {
 	return mysqlNodeServiceInstance
 }
 
+func (service *MySQLNodeService) GetTransaction() (*sql.Tx, error) {
+	return service.DB.Begin()
+}
+
 // StartNodeInstance 创建一个新的节点实例
-func (r *MySQLNodeService) InitNodeInstance(processInstanceId int, nodeName string, executionId string, previousExecutionId string, assignee string) (int, error) {
+func (service *MySQLNodeService) InitNodeInstance(tx *sql.Tx, processInstanceId int, processDefinitionName string, nodeName string, executionId string, previousExecutionId string, assignee string) (int, error) {
 	query := `
-        INSERT INTO node_instance (process_instance_id, node_name, execution_id, previous_execution_id, assignee, start_time)
-        VALUES (?, ?, ?, ?, ?, ?)`
+        INSERT INTO node_instance (process_instance_id, process_definition_name, node_name, execution_id, previous_execution_id, assignee, start_time)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`
 
 	startTime := time.Now()
-	result, err := r.DB.Exec(query, processInstanceId, nodeName, executionId, previousExecutionId, assignee, startTime)
+	result, err := tx.Exec(query, processInstanceId, processDefinitionName, nodeName, executionId, previousExecutionId, assignee, startTime)
 	if err != nil {
 		return 0, fmt.Errorf("failed to start node instance: %v", err)
 	}
@@ -53,7 +58,7 @@ func (r *MySQLNodeService) InitNodeInstance(processInstanceId int, nodeName stri
 }
 
 // GetAttributeByExpression 根据表达式获取属性值
-func (r *MySQLNodeService) GetAttributeByExpression(expression string, processInstanceId int) (map[string]interface{}, error) {
+func (service *MySQLNodeService) GetAttributeByExpression(tx *sql.Tx, expression string, processInstanceId int) (map[string]interface{}, error) {
 	// 提取表达式中的属性
 	attributes := ExtractAttributes(expression)
 
@@ -72,8 +77,10 @@ func (r *MySQLNodeService) GetAttributeByExpression(expression string, processIn
 
 		// 因为打回的关系 还有流程配置的关系 历史表里保留全量数据 可能不止一条，节点表因为流程配置可能也有多条
 		// 打回的时候 直接顺着打回目标节点的outgoing全部删除 可以保证至少节点表里最新的数据 就是可用的数据，因为打回的历史数据全部给删除了，留下来的最新的一定是生效的
+		// 因为是用来找自己的轮次的 所以根据start_time还是根据 end_time排序都一样
+		// 必须用事务 否则查询不到当前批次数据
 		query := `SELECT output_data FROM node_instance WHERE execution_id = ? and process_instance_id = ?  ORDER BY start_time DESC LIMIT 1`
-		row := r.DB.QueryRow(query, executionId, processInstanceId)
+		row := tx.QueryRow(query, executionId, processInstanceId)
 
 		var outputData []byte
 		if err := row.Scan(&outputData); err != nil {
@@ -103,14 +110,15 @@ func (r *MySQLNodeService) GetAttributeByExpression(expression string, processIn
 }
 
 // 根据流程实例id和 网关的执行结构id 查询当前并行网关是否满足执行下一步的条件
-func (r *MySQLNodeService) CountParallelGatewayIncoming(processInstanceId int, executionId string) (int, error) {
+// for update 利用间隙锁 防止并发场景下的幻读
+func (service *MySQLNodeService) CountParallelGatewayIncoming(tx *sql.Tx, processInstanceId int, executionId string) (int, error) {
 	var count int
 	query := `
 		SELECT COUNT(*)
 		FROM node_instance
-		WHERE process_instance_id = ? AND execution_id = ?
+		WHERE process_instance_id = ? AND execution_id = ? for update
 	`
-	err := r.DB.QueryRow(query, processInstanceId, executionId).Scan(&count)
+	err := tx.QueryRow(query, processInstanceId, executionId).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("failed to count parallel gateway incoming: %v", err)
 	}
@@ -118,10 +126,10 @@ func (r *MySQLNodeService) CountParallelGatewayIncoming(processInstanceId int, e
 }
 
 // GetNodeInstanceById 根据Id获取节点实例
-func (r *MySQLNodeService) GetNodeInstanceById(id int) (*NodeInstance, error) {
-	query := `SELECT id, process_instance_id, node_name, execution_id, output_data, previous_execution_id, start_time, end_time FROM node_instance WHERE id = ?`
+func (service *MySQLNodeService) GetNodeInstanceById(id int) (*NodeInstance, error) {
+	query := `SELECT id, process_instance_id,process_definition_name, node_name, execution_id, output_data, previous_execution_id, start_time, end_time FROM node_instance WHERE id = ?`
 	instance := &NodeInstance{}
-	err := r.DB.QueryRow(query, id).Scan(&instance.Id, &instance.ProcessInstanceId, &instance.NodeName, &instance.ExecutionId, &instance.OutputData, &instance.PreviousExecutionId, &instance.StartTime, &instance.EndTime)
+	err := service.DB.QueryRow(query, id).Scan(&instance.Id, &instance.ProcessInstanceId, &instance.ProcessDefinitionName, &instance.NodeName, &instance.ExecutionId, &instance.OutputData, &instance.PreviousExecutionId, &instance.StartTime, &instance.EndTime)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -132,9 +140,9 @@ func (r *MySQLNodeService) GetNodeInstanceById(id int) (*NodeInstance, error) {
 }
 
 // GetNodeInstancesByProcessInstanceId 根据流程实例Id获取节点实例列表
-func (r *MySQLNodeService) GetNodeInstancesByProcessInstanceId(processInstanceId int) ([]*NodeInstance, error) {
-	query := `SELECT id, process_instance_id, node_name, execution_id, output_data, previous_execution_id, start_time, end_time FROM node_instance WHERE process_instance_id = ?`
-	rows, err := r.DB.Query(query, processInstanceId)
+func (service *MySQLNodeService) GetNodeInstancesByProcessInstanceId(processInstanceId int) ([]*NodeInstance, error) {
+	query := `SELECT id, process_instance_id,process_definition_name, node_name, execution_id, output_data, previous_execution_id, start_time, end_time FROM node_instance WHERE process_instance_id = ?`
+	rows, err := service.DB.Query(query, processInstanceId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get node instances by process instance Id: %v", err)
 	}
@@ -143,7 +151,7 @@ func (r *MySQLNodeService) GetNodeInstancesByProcessInstanceId(processInstanceId
 	var instances []*NodeInstance
 	for rows.Next() {
 		instance := &NodeInstance{}
-		err := rows.Scan(&instance.Id, &instance.ProcessInstanceId, &instance.NodeName, &instance.ExecutionId, &instance.OutputData, &instance.PreviousExecutionId, &instance.StartTime, &instance.EndTime)
+		err := rows.Scan(&instance.Id, &instance.ProcessInstanceId, &instance.ProcessDefinitionName, &instance.NodeName, &instance.ExecutionId, &instance.OutputData, &instance.PreviousExecutionId, &instance.StartTime, &instance.EndTime)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan node instance: %v", err)
 		}
@@ -154,38 +162,181 @@ func (r *MySQLNodeService) GetNodeInstancesByProcessInstanceId(processInstanceId
 }
 
 // UpdateNodeInstanceOutput 更新节点实例的输出数据
-func (r *MySQLNodeService) UpdateNodeInstanceOutput(id int, outputData string) error {
+func (service *MySQLNodeService) UpdateNodeInstanceOutput(tx *sql.Tx, id int, outputData string) error {
 	query := `
         UPDATE node_instance
-        SET output_data = ?
+        SET output_data = ?, end_time = NOW()
         WHERE id = ?
     `
-	_, err := r.DB.Exec(query, outputData, id)
+	_, err := tx.Exec(query, outputData, id)
 	if err != nil {
 		return fmt.Errorf("failed to update node instance output: %v", err)
 	}
 	return nil
 }
 
-// CompleteNodeInstance 完成节点实例
-func (r *MySQLNodeService) CompleteNodeInstance(id int) error {
-	endTime := time.Now()
+func (service *MySQLNodeService) GetAssigneeUndoneTask(assignee string) ([]map[string]interface{}, error) {
+	// 创建一个空的map数组用于存储结果
+	var results []map[string]interface{}
+
+	// 构建查询语句
 	query := `
-        UPDATE node_instance
-        SET end_time = ?
-        WHERE id = ?
+        SELECT id, process_instance_id,process_definition_name, node_name, execution_id, output_data, previous_execution_id, assignee, start_time, end_time
+        FROM node_instance
+        WHERE assignee = ? AND output_data IS NULL
     `
-	_, err := r.DB.Exec(query, endTime, id)
+
+	// 执行查询
+	rows, err := service.DB.Query(query, assignee)
 	if err != nil {
-		return fmt.Errorf("failed to complete node instance: %v", err)
+		return nil, err
 	}
-	return nil
+	defer rows.Close()
+
+	// 遍历查询结果
+	for rows.Next() {
+		var (
+			id                    int
+			processInstanceID     int
+			processDefinitionName string
+			nodeName              string
+			executionID           string
+			outputData            sql.NullString
+			previousExecutionID   sql.NullString
+			assignee              sql.NullString
+			startTime             sql.NullString
+			endTime               sql.NullString
+		)
+
+		// 扫描每一行数据
+		err := rows.Scan(&id, &processInstanceID, &processDefinitionName, &nodeName, &executionID, &outputData, &previousExecutionID, &assignee, &startTime, &endTime)
+		if err != nil {
+			return nil, err
+		}
+
+		// 将数据放入map
+		result := map[string]interface{}{
+			"id":                      id,
+			"process_instance_id":     processInstanceID,
+			"process_definition_name": processDefinitionName,
+			"node_name":               nodeName,
+			"execution_id":            executionID,
+			"output_data":             outputData,
+			"previous_execution_id":   previousExecutionID,
+			"assignee":                assignee,
+			"start_time":              startTime,
+			"end_time":                endTime,
+		}
+
+		// 将map放入结果数组
+		results = append(results, result)
+	}
+
+	// 检查是否有错误
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return results, nil
 }
 
-// DeleteNodeInstance 根据Id删除节点实例
-func (r *MySQLNodeService) DeleteNodeInstance(id int) error {
-	query := ` DELETE FROM node_instance WHERE id = ?`
-	_, err := r.DB.Exec(query, id)
+func (service *MySQLNodeService) GetTaskDetailByTaskId(taskId int) (map[string]interface{}, error) {
+	// 构建查询语句
+	query := `
+        SELECT id, process_instance_id,process_definition_name, node_name, execution_id, output_data, previous_execution_id, assignee, start_time, end_time
+        FROM node_instance
+        WHERE id = ?
+    `
+
+	// 执行查询
+	row := service.DB.QueryRow(query, taskId)
+
+	// 定义用于接收查询结果的变量
+	var (
+		id                    int
+		processInstanceID     int
+		processDefinitionName string
+		nodeName              string
+		executionID           string
+		outputData            sql.NullString
+		previousExecutionID   sql.NullString
+		assignee              string
+		startTime             sql.NullTime
+		endTime               sql.NullTime
+	)
+
+	// 扫描查询结果到变量中
+	err := row.Scan(&id, &processInstanceID, &nodeName, &executionID, &outputData, &previousExecutionID, &assignee, &startTime, &endTime)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("task with id %d not found", taskId)
+		}
+		return nil, fmt.Errorf("failed to get task detail: %v", err)
+	}
+
+	// 将查询结果赋值到 map 中
+	result := map[string]interface{}{
+		"id":                      id,
+		"process_instance_id":     processInstanceID,
+		"process_definition_name": processDefinitionName,
+		"node_name":               nodeName,
+		"execution_id":            executionID,
+		"output_data":             nilIfEmpty(outputData),
+		"previous_execution_id":   nilIfEmpty(previousExecutionID),
+		"assignee":                assignee,
+		"start_time":              nilIfEmptyTime(startTime),
+		"end_time":                nilIfEmptyTime(endTime),
+	}
+
+	return result, nil
+}
+
+// // DeleteNodeInstance 根据Id删除节点实例 这个方法暂时备用
+// func (r *MySQLNodeService) DeleteNodeInstance(tx *sql.Tx, id int) error {
+// 	query := ` DELETE FROM node_instance WHERE id = ?`
+// 	_, err := r.DB.Exec(query, id)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to delete node instance: %v", err)
+// 	}
+// 	return nil
+// }
+
+func (service *MySQLNodeService) GetTaskForm(processDefinitionName string, executionId string) (string, error) {
+	modelMap := GetModelMap()
+	var model *Model
+	var parseErr error // 外部声明 parseErr 变量
+	if (*modelMap)[processDefinitionName] != nil {
+		model = (*modelMap)[processDefinitionName]
+	} else {
+		mySQLRepositoryService := GetMySQLRepositoryService()
+		ppd, err := mySQLRepositoryService.GetLatestProcessDefinitionByName(processDefinitionName)
+		if err != nil {
+			return "", fmt.Errorf("failed to retrieve last insert id: %v", err)
+		}
+
+		if ppd == nil {
+			return "", fmt.Errorf("no process definition found with name: %s", processDefinitionName)
+		}
+		pd := *ppd
+		//解析xml
+		model, parseErr = ParseXMLByte(pd.XMLContent)
+		//更新版本 流程定义不用更新
+		model.Version = pd.Version
+		if parseErr != nil {
+			log.Println("This is a parseErr:", parseErr)
+		}
+
+		//更新缓存
+		(*modelMap)[model.ProcessDefinitionName] = model
+	}
+
+	formdata := model.Tasks[executionId].FormData
+	return formdata, nil
+}
+
+func (service *MySQLNodeService) ClearProcessData(tx *sql.Tx, processInstanceId int) error {
+	query := ` DELETE FROM node_instance WHERE process_instance_id = ?`
+	_, err := tx.Exec(query, processInstanceId)
 	if err != nil {
 		return fmt.Errorf("failed to delete node instance: %v", err)
 	}

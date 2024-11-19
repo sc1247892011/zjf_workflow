@@ -12,6 +12,11 @@ type SequenceFlow struct {
 	SourceRef   string `xml:"sourceRef,attr"`   // 绑定 sourceRef 属性
 	TargetRef   string `xml:"targetRef,attr"`   // 绑定 targetRef 属性
 	Expression  string `xml:"ConditionExpression,omitempty"`
+	X           string `xml:"x,attr"`
+	Y           string `xml:"y,attr"`
+	H           string `xml:"h,attr"`
+	W           string `xml:"w,attr"`
+	Listener    string `xml:"Listener"` // 任务监听 执行完毕之后的后续逻辑 方法名称可以用逗号隔开 传递多段逻辑
 }
 
 func (sequenceFlow SequenceFlow) Execute(ctx *WorkflowContext) {
@@ -28,7 +33,7 @@ func (sequenceFlow SequenceFlow) Execute(ctx *WorkflowContext) {
 	log.Println("Extracted attributes:", attributes) // 输出 ["data.value", "data.status"]
 	// 为表达式中的变量赋值
 	nodeService := GetServiceFactory().GetNodeService()
-	parameters, err1 := nodeService.GetAttributeByExpression(sequenceFlow.Expression, ctx.ProcessInstanceId)
+	parameters, err1 := nodeService.GetAttributeByExpression(ctx.Tx, sequenceFlow.Expression, ctx.ProcessInstanceId)
 
 	if err1 != nil {
 		log.Println("Failed to get attribute:", err1)
@@ -40,11 +45,15 @@ func (sequenceFlow SequenceFlow) Execute(ctx *WorkflowContext) {
 		log.Println("Failed to parse expression:", err)
 		return
 	}
+
 	// 判断 result 是否为布尔类型
 	if boolResult, ok := result.(bool); ok {
 		log.Println("Result is a boolean:", boolResult)
 		if boolResult {
 			//条件满足 继续走
+			//执行监听
+			RunListener(sequenceFlow.Listener, ctx)
+			//下一步
 			exec := ctx.Model.AllData[sequenceFlow.TargetRef]
 			exec.Execute(ctx)
 		} else {

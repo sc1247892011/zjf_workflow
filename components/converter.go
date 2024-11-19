@@ -21,32 +21,32 @@ func ParseXMLByte(byteValue []byte) (*Model, error) {
 
 	// 遍历所有的XML元素并添加到Model中
 
-	// 添加 StartEvent 到 Model
+	// 添加 StartEvent 开始事件 到 Model
 	for _, startEvent := range process.StartEvents {
 		model.AddStartEvent(startEvent.ExecutionId, startEvent)
 	}
 
-	// 添加 Task 到 Model
+	// 添加 Task 任务 到 Model
 	for _, task := range process.Tasks {
 		model.AddTask(task.ExecutionId, task)
 	}
 
-	// 添加 ParallelGateway 到 Model
+	// 添加 ParallelGateway 并行网关 到 Model
 	for _, gateway := range process.ParallelGateways {
 		model.AddParallelGateway(gateway.ExecutionId, gateway)
 	}
 
-	// 添加 ExclusiveGateway 到 Model
+	// 添加 ExclusiveGateway 互斥网关 到 Model
 	for _, gateway := range process.ExclusiveGateways {
 		model.AddExclusiveGateway(gateway.ExecutionId, gateway)
 	}
 
-	// 添加 EndEvent 到 Model
+	// 添加 EndEvent 结束事件 到 Model
 	for _, endEvent := range process.EndEvents {
 		model.AddEndEvent(endEvent.ExecutionId, endEvent)
 	}
 
-	// 添加 SequenceFlow 到 Model
+	// 添加 SequenceFlow 序列流 到 Model
 	for _, flow := range process.SequenceFlows {
 		model.AddSequenceFlow(flow.ExecutionId, flow)
 	}
