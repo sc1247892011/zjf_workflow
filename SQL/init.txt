@@ -1,0 +1,70 @@
+
+DROP TABLE IF EXISTS process_definition;
+CREATE TABLE process_definition (
+    id INT PRIMARY KEY AUTO_INCREMENT COMMENT '唯一标识每个流程定义',
+    process_definition_name VARCHAR(255) NOT NULL COMMENT '流程名称，用于标识流程的业务名称',
+    version INT NOT NULL COMMENT '流程定义的版本号，用于管理流程的不同版本',
+    xml_content BLOB NOT NULL COMMENT '存储流程定义的XML内容，包含流程的结构和节点信息',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '流程定义的创建时间',
+	created_by VARCHAR(20) COMMENT '创建该流程定义的用户ID或名称', 
+    status VARCHAR(20) DEFAULT 'active' COMMENT '流程定义的状态，如活跃、废弃、草稿等',
+    description TEXT COMMENT '流程定义的描述，存储对流程的简要说明和业务背景',
+    UNIQUE (process_definition_name, version) COMMENT '确保同一流程名称的某个版本是唯一的'
+) COMMENT '存储流程定义的表，用于保存流程的XML结构和相关信息';
+
+DROP TABLE IF EXISTS process_instance;
+CREATE TABLE process_instance (
+    id INT PRIMARY KEY AUTO_INCREMENT COMMENT '唯一标识每个流程实例',
+    process_definition_name VARCHAR(255) NOT NULL COMMENT '流程实例的名称，通常与流程定义名称相同',
+    version INT NOT NULL COMMENT '该流程实例对应的流程定义的版本号',
+    status VARCHAR(20) DEFAULT 'running' COMMENT '流程实例的当前状态，如运行中、挂起、终止等',
+    created_by VARCHAR(20) COMMENT '发起该流程实例的用户ID或名称',
+    business_key VARCHAR(50) NOT NULL COMMENT '关联到业务系统的唯一业务ID',
+    start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '流程实例的启动时间',
+    end_time TIMESTAMP COMMENT '流程实例的结束时间',
+    INDEX (process_definition_name, version) COMMENT '用于快速查找某个流程定义的所有历史实例',
+    INDEX (business_key) COMMENT '用于快速查找某个业务ID对应的流程实例'
+) COMMENT '存储当前所有正在执行的流程实例的表';
+ 
+DROP TABLE IF EXISTS historic_process_instance;
+CREATE TABLE historic_process_instance (
+    id INT PRIMARY KEY COMMENT '唯一标识每个历史流程实例',
+    process_definition_name VARCHAR(255) NOT NULL COMMENT '流程实例的名称，通常与流程定义名称相同',
+    version INT NOT NULL COMMENT '该历史流程实例对应的流程定义的版本号',
+	status VARCHAR(20) DEFAULT 'completed' COMMENT '历史流程实例的最终状态，如完成、终止等',
+    created_by VARCHAR(100) COMMENT '发起该历史流程实例的用户ID或名称',
+	business_key VARCHAR(50) NOT NULL COMMENT '关联到业务系统的唯一业务ID',
+    start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '流程实例的启动时间',
+    end_time TIMESTAMP COMMENT '流程实例的结束时间',
+    INDEX (process_definition_name, version) COMMENT '用于快速查找某个流程定义的所有历史实例',
+	INDEX (business_key) COMMENT '用于快速查找某个业务ID对应的流程实例'
+) COMMENT '存储已完成或终止的历史流程实例的表'; 
+DROP TABLE IF EXISTS node_instance;
+CREATE TABLE node_instance (
+    id INT PRIMARY KEY AUTO_INCREMENT COMMENT '唯一标识每个节点实例',
+    process_instance_id INT NOT NULL COMMENT '关联到流程实例表中的id，表示该节点所属的流程实例',
+	process_definition_name VARCHAR(255) NOT NULL COMMENT '流程实例的名称，通常与流程定义名称相同',
+    node_name VARCHAR(255) NOT NULL COMMENT '节点的名称，用于标识节点在流程中的位置或功能',
+    execution_id VARCHAR(50) NOT NULL COMMENT '表示节点在流程定义中的结构ID',
+    output_data JSON COMMENT '存储节点的输出数据，通常以JSON格式存储，将作为下一个节点的输入数据',
+    previous_execution_id VARCHAR(50) COMMENT '上一个节点的执行ID，表示当前节点是从哪个节点流转而来',
+	assignee VARCHAR(255) NOT NULL COMMENT '当前处理该节点实例的用户',
+    start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '节点开始处理的时间',
+    end_time TIMESTAMP COMMENT '节点处理完成的时间',
+    INDEX (process_instance_id,execution_id) COMMENT '用于快速查找某个流程实例下的所有节点'
+) COMMENT '存储当前所有正在执行的节点实例的表，用于数据交互和处理';
+
+DROP TABLE IF EXISTS historic_node_instance;
+CREATE TABLE historic_node_instance (
+    id INT PRIMARY KEY COMMENT '唯一标识每个历史节点实例',
+    process_instance_id INT NOT NULL COMMENT '关联到流程实例表中的id，表示该节点所属的流程实例',
+	process_definition_name VARCHAR(255) NOT NULL COMMENT '流程实例的名称，通常与流程定义名称相同',
+    node_name VARCHAR(255) NOT NULL COMMENT '节点的名称，用于标识节点在流程中的位置或功能',
+    execution_id VARCHAR(50) NOT NULL COMMENT '表示节点在流程定义中的结构ID',
+    output_data JSON COMMENT '存储节点的输出数据，通常以JSON格式存储，将作为下一个节点的输入数据',
+    previous_execution_id VARCHAR(50) COMMENT '上一个节点的执行ID，表示当前节点是从哪个节点流转而来',
+	assignee VARCHAR(255) NOT NULL COMMENT '当前处理该节点实例的用户',
+    start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '节点开始处理的时间',
+    end_time TIMESTAMP COMMENT '节点处理完成的时间',
+    INDEX (process_instance_id,execution_id) COMMENT '用于快速查找某个流程实例下的所有历史节点'
+) COMMENT '存储已完成的历史节点实例的表';
